@@ -1,0 +1,41 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { width: 1280px; height: 440px; padding: 56px 64px; display: flex; gap: 56px; align-items: center;
+    background:
+      radial-gradient(circle at 1px 1px, #e3e4e8 1px, transparent 0) 0 0 / 24px 24px,
+      var(--surface); }
+  .left { flex: 1; }
+  .eyebrow { font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: 46px; line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; margin-top: 14px; }
+  .sub { font-size: 19px; line-height: 1.5; color: var(--muted); margin-top: 18px; max-width: 560px; }
+  .chips { display: flex; gap: 8px; margin-top: 26px; flex-wrap: wrap; }
+  .chip { font-size: 14px; font-weight: 500; padding: 6px 12px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
+  .flow { width: 430px; display: flex; flex-direction: column; gap: 10px; }
+  .step { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+  .step .icon { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); padding: 8px; flex: none; }
+  .step b { font-size: 15px; font-weight: 600; display: block; }
+  .step span { font-size: 13px; color: var(--muted); }
+  .step.out { border-color: var(--accent); }
+  .step.out .icon { background: var(--accent); color: #fff; }
+  .arrow { height: 0; position: relative; }
+</style></head>
+<body><div id="frame">
+  <div class="left">
+    <div class="eyebrow">GTM Engineering · Portfolio project</div>
+    <h1>Inbound Lead Enrichment<br>&amp; Routing Engine</h1>
+    <p class="sub">Every inbound lead is checked for consent, researched from its website by an LLM, scored against a legal-market ICP, written to HubSpot and routed to the right rep.</p>
+    <div class="chips"><span class="chip">n8n</span><span class="chip">HubSpot API</span><span class="chip">OpenAI</span><span class="chip">Slack</span><span class="chip">JavaScript</span><span class="chip">DE / EN · GDPR</span></div>
+  </div>
+  <div class="flow">
+    <div class="step"><div class="icon" data-icon="form"></div><div><b>Website form</b><span>German or English, with consent checkbox</span></div></div>
+    <div class="step"><div class="icon" data-icon="check"></div><div><b>Guardrails</b><span>GDPR consent · free-mail filter · dedup</span></div></div>
+    <div class="step"><div class="icon" data-icon="llm"></div><div><b>LLM enrichment</b><span>Firm type · lawyers · practice areas</span></div></div>
+    <div class="step"><div class="icon" data-icon="score"></div><div><b>ICP score &amp; tier</b><span>Rules 0–80 + LLM judgment 0–20</span></div></div>
+    <div class="step out"><div class="icon" data-icon="route"></div><div><b>HubSpot + Slack</b><span>Upserted, routed by region, rep alerted</span></div></div>
+  </div>
+</div>
+<script>
+  for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = window.ICONS[el.dataset.icon];
+</script>
+</body></html>

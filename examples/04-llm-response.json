@@ -1,0 +1,16 @@
+{
+  "org_type": "law_firm",
+  "lawyer_count": 35,
+  "practice_areas": [
+    "Corporate/M&A",
+    "Employment",
+    "Litigation & Arbitration",
+    "Real Estate"
+  ],
+  "legaltech_signals": [
+    "Hiring a Legal Engineer"
+  ],
+  "fit_score": 15,
+  "fit_reason": "Mid-size commercial firm with document-heavy practices that is starting to invest in legal tech.",
+  "summary": "Muster Rechtsanwälte is a commercial law firm with 35 lawyers in Munich and Frankfurt. It is hiring a Legal Engineer to digitise its workflows."
+}

@@ -1,0 +1,45 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { width: 760px; padding: 26px 28px 44px; background: #ffffff; }
+  .channel { font-size: 15px; font-weight: 700; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 18px; display: flex; gap: 8px; align-items: baseline; }
+  .channel span { font-size: 13px; color: var(--faint); font-weight: 400; }
+  .msg { display: flex; gap: 12px; }
+  .avatar { width: 40px; height: 40px; border-radius: 8px; background: var(--accent); color: #fff; padding: 9px; flex: none; }
+  .who { display: flex; align-items: baseline; gap: 8px; }
+  .who b { font-size: 15px; font-weight: 700; }
+  .badge { font-size: 10px; font-weight: 700; color: var(--muted); background: var(--track); padding: 1px 4px; border-radius: 3px; }
+  .time { font-size: 12px; color: var(--faint); }
+  .body { font-size: 15px; line-height: 1.5; color: #1d1c1d; margin-top: 2px; }
+  .body .line { min-height: 22px; }
+  .body em { color: #3b3d42; }
+  .dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; vertical-align: -1px; margin-right: 4px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn { font-size: 13px; font-weight: 600; border: 1px solid #c9cbd1; border-radius: 6px; padding: 5px 12px; color: #1d1c1d; }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
+</style></head>
+<body><div id="frame">
+  <div class="channel"># inbound-leads <span>Incoming webhook from n8n</span></div>
+  <div class="msg">
+    <div class="avatar icon" data-icon="webhook"></div>
+    <div>
+      <div class="who"><b>Lead Engine</b><span class="badge">APP</span><span class="time">10:42</span></div>
+      <div class="body" id="body"></div>
+    </div>
+  </div>
+  <div class="footer-note">Sample data · message text from examples/07-slack-message.json</div>
+</div>
+<script>
+for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = window.ICONS[el.dataset.icon];
+const emoji = { ':large_green_circle:': '#2eb67d', ':large_yellow_circle:': '#ecb22e', ':white_circle:': '#d0d2d6' };
+const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const mrkdwn = line => {
+  let h = esc(line);
+  for (const [k, c] of Object.entries(emoji)) h = h.replace(k, `<span class="dot" style="background:${c}"></span>`);
+  h = h.replace(':warning:', '⚠️');
+  return h.replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/(^|\s)_(.+?)_(\s|$)/g, '$1<em>$2</em>$3');
+};
+const text = window.EXAMPLES['07-slack-message'].text;
+document.getElementById('body').innerHTML = text.split('\n').map(l => `<div class="line">${mrkdwn(l)}</div>`).join('');
+</script>
+</body></html>

@@ -2,8 +2,15 @@
 # Edit the JS or node layout here, then run: python3 scripts/build_workflow.py
 import json, uuid
 
+_NS = uuid.UUID("6f1c2a52-8d3e-4b7a-9c41-2e5d7f0a1b93")
+_count = 0
+
+
 def uid():
-    return str(uuid.uuid4())
+    # Deterministic IDs: re-running the generator gives byte-identical output, so diffs stay clean.
+    global _count
+    _count += 1
+    return str(uuid.uuid5(_NS, str(_count)))
 
 # ---------------------------------------------------------------- JS code
 
@@ -23,10 +30,10 @@ return [{
     tier_a_min: 70,
     tier_b_min: 40,
 
-    // Routing: owner per region. hubspot_owner_id = numeric owner ID from HubSpot (Settings > Users), or '' to skip.
+    // Routing: owner per region. Replace the names with your reps. hubspot_owner_id = numeric owner ID from HubSpot (Settings > Users), or '' to skip.
     owners: {
-      DACH:  { name: 'DACH BDR (replace me)', slack: '', hubspot_owner_id: '' },
-      EU:    { name: 'EU BDR (replace me)',   slack: '', hubspot_owner_id: '' },
+      DACH:  { name: 'DACH BDR',              slack: '', hubspot_owner_id: '' },
+      EU:    { name: 'EU BDR',                slack: '', hubspot_owner_id: '' },
       OTHER: { name: 'Inbound queue',          slack: '', hubspot_owner_id: '' }
     },
 
@@ -392,13 +399,13 @@ nodes = [
 
 notes = [
     sticky("## 1. Intake & guardrails\nWebhook receives the form POST and answers 200 immediately.\n\n**Config** holds every setting (owners, thresholds, model, Slack URL).\n\n**Normalize & Validate** cleans fields, checks GDPR consent, filters free-mail, detects DE/EN and region.\n\nMVP: unprocessable leads stop here. Full engine: store a minimal record and nurture.",
-           [X(0) - 40, Y - 300], 940, 560, 7),
+           [X(0) - 40, Y - 380], 940, 840, 7),
     sticky("## 2. Enrichment & scoring\n**Fetch Website** pulls the homepage (failures continue).\n\n**LLM Extract & Judge** returns strict JSON: org type, lawyer count, practice areas, legal-tech signals, fit score + reason.\n\n**Score Lead** = rules 0-80 + LLM 0-20 → Tier A/B/C. LLM failure = rules only + manual-review flag.",
-           [X(4) - 40, Y - 300], 940, 560, 4),
+           [X(4) - 40, Y - 380], 940, 840, 4),
     sticky("## 3. HubSpot (CRM)\nCompany: find by domain → update or create.\nContact: batch upsert by email (HubSpot's native dedup; returning contacts are detected).\nThen associate contact ↔ company.\n\nScore lives in a note. Flip `write_custom_properties` in Config once the custom properties exist.",
-           [X(8) - 40, Y - 300], 1420, 760, 6),
+           [X(8) - 40, Y - 380], 1420, 840, 6),
     sticky("## 4. Route & notify\nOwner by region from Config. Note with score breakdown on the contact.\nTier A/B → Slack alert. Tier C → CRM only.\n\nFull engine: segment routing, round-robin, AI first-touch draft, Postgres funnel log.",
-           [X(14) - 40, Y - 300], 940, 760, 5),
+           [X(14) - 40, Y - 380], 940, 840, 5),
 ]
 
 def link(*targets):

@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { display: inline-block; padding: 28px 32px 40px;
+    background: radial-gradient(circle at 1px 1px, #dcdde2 1px, transparent 0) 0 0 / 18px 18px, var(--surface); }
+  .head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+  .head b { font-size: 20px; font-weight: 600; }
+  .head span { font-size: 14px; color: var(--muted); }
+  #canvas { position: relative; transform-origin: 0 0; }
+  .sticky { position: absolute; border-radius: 10px; padding: 22px 26px; border: 1px solid rgba(0,0,0,.06); }
+  .sticky h2 { font-size: 30px; font-weight: 700; margin-bottom: 10px; }
+  .sticky p { font-size: 21px; line-height: 1.4; color: #33363d; margin-bottom: 8px; }
+  .sticky code { font-family: var(--mono); font-size: 18px; background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; }
+  .node { position: absolute; width: 100px; height: 100px; background: var(--panel); border: 2px solid #c9cbd1; border-radius: 12px; padding: 26px; color: #444851; }
+  .node.trigger { border-radius: 44px 12px 12px 44px; }
+  .node.code { color: #e06c00; }
+  .node.http { color: var(--accent); }
+  .node.if { color: #2f9e57; }
+  .node.noop { color: var(--faint); border-style: dashed; }
+  .node.crm { color: #e2593b; }
+  .node.llm { color: #6250d6; }
+  .node.slack { color: #b83280; }
+  .label { position: absolute; width: 210px; text-align: center; font-size: 22px; font-weight: 600; line-height: 1.22; color: var(--ink); }
+  svg.wires { position: absolute; left: 0; top: 0; overflow: visible; }
+  .port-label { font: 600 18px var(--font); fill: var(--muted); }
+</style></head>
+<body><div id="frame">
+  <div class="head"><b>n8n workflow canvas</b><span id="meta"></span></div>
+  <div id="wrap"><div id="canvas"></div></div>
+</div>
+<script>
+const SCALE = 0.55;
+const wf = window.WORKFLOW;
+const stickies = wf.nodes.filter(n => n.type.endsWith('stickyNote'));
+const nodes = wf.nodes.filter(n => !n.type.endsWith('stickyNote'));
+const byName = Object.fromEntries(nodes.map(n => [n.name, n]));
+document.getElementById('meta').textContent =
+  `${nodes.length} nodes · drawn from the node positions and connections in workflow/inbound-lead-engine-mvp.json`;
+
+const pad = 20;
+const xs = [...nodes.map(n => n.position[0]), ...stickies.map(s => s.position[0])];
+const ys = [...nodes.map(n => n.position[1]), ...stickies.map(s => s.position[1])];
+const minX = Math.min(...xs) - pad, minY = Math.min(...ys) - pad;
+const maxX = Math.max(...nodes.map(n => n.position[0] + 160), ...stickies.map(s => s.position[0] + s.parameters.width)) + pad;
+const maxY = Math.max(...nodes.map(n => n.position[1] + 190), ...stickies.map(s => s.position[1] + s.parameters.height)) + pad;
+const W = maxX - minX, H = maxY - minY;
+const canvas = document.getElementById('canvas');
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; canvas.style.transform = `scale(${SCALE})`;
+const wrap = document.getElementById('wrap');
+wrap.style.width = W * SCALE + 'px'; wrap.style.height = H * SCALE + 'px';
+const X = x => x - minX, Y = y => y - minY;
+
+const tints = { 7: '#efefec', 4: '#e7f4eb', 6: '#efe9fa', 5: '#e6f0fb' };
+const md = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+for (const s of stickies) {
+  const el = document.createElement('div');
+  el.className = 'sticky';
+  Object.assign(el.style, { left: X(s.position[0]) + 'px', top: Y(s.position[1]) + 'px',
+    width: s.parameters.width + 'px', height: s.parameters.height + 'px', background: tints[s.parameters.color] || '#fff8d6' });
+  const [first, ...rest] = s.parameters.content.split('\n');
+  el.innerHTML = `<h2>${md(first.replace(/^#+\s*/, ''))}</h2>` +
+    rest.join('\n').split(/\n\n+/).map(p => `<p>${md(p).replace(/\n/g, '<br>')}</p>`).join('');
+  canvas.appendChild(el);
+}
+
+const kind = n => {
+  if (n.type.endsWith('webhook')) return ['trigger', 'webhook'];
+  if (n.type.endsWith('.if')) return ['if', 'branch'];
+  if (n.type.endsWith('noOp')) return ['noop', 'stop'];
+  if (n.name.startsWith('HubSpot')) return ['crm', 'crm'];
+  if (n.name.startsWith('LLM')) return ['llm', 'llm'];
+  if (n.name.startsWith('Slack')) return ['slack', 'slack'];
+  if (n.type.endsWith('httpRequest')) return ['http', 'globe'];
+  if (n.name === 'Config') return ['code', 'config'];
+  return ['code', 'code'];
+};
+
+const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+svg.setAttribute('class', 'wires'); svg.setAttribute('width', W); svg.setAttribute('height', H);
+const defs = '<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9a9da5"/></marker></defs>';
+let paths = '';
+for (const [src, c] of Object.entries(wf.connections)) {
+  const a = byName[src];
+  const outs = c.main;
+  outs.forEach((branch, i) => branch.forEach(t => {
+    const b = byName[t.node];
+    const x1 = X(a.position[0]) + 100, y1 = Y(a.position[1]) + (outs.length > 1 ? (i === 0 ? 32 : 68) : 50);
+    const x2 = X(b.position[0]) - 4, y2 = Y(b.position[1]) + 50;
+    const dx = Math.max(40, (x2 - x1) / 2);
+    paths += `<path d="M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}" fill="none" stroke="#9a9da5" stroke-width="2.5" marker-end="url(#arr)"/>`;
+    if (outs.length > 1) paths += `<text class="port-label" x="${x1 + 10}" y="${y1 + (i === 0 ? -8 : 22)}">${i === 0 ? 'true' : 'false'}</text>`;
+  }));
+}
+svg.innerHTML = defs + paths;
+canvas.appendChild(svg);
+
+for (const n of nodes) {
+  const [cls, icon] = kind(n);
+  const el = document.createElement('div');
+  el.className = `node icon ${cls}`;
+  el.style.left = X(n.position[0]) + 'px'; el.style.top = Y(n.position[1]) + 'px';
+  el.innerHTML = window.ICONS[icon];
+  canvas.appendChild(el);
+  const lab = document.createElement('div');
+  lab.className = 'label'; lab.textContent = n.name;
+  lab.style.left = X(n.position[0]) + 50 - 105 + 'px'; lab.style.top = Y(n.position[1]) + 112 + 'px';
+  canvas.appendChild(lab);
+}
+</script>
+</body></html>

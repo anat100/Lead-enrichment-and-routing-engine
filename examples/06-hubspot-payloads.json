@@ -1,0 +1,36 @@
+{
+  "company": {
+    "properties": {
+      "name": "Muster Rechtsanwälte",
+      "domain": "muster-rechtsanwaelte.example",
+      "country": "DE"
+    }
+  },
+  "contact": {
+    "properties": {
+      "email": "test.lead@muster-rechtsanwaelte.example",
+      "firstname": "Test",
+      "lastname": "Lead",
+      "company": "Muster Rechtsanwälte"
+    }
+  },
+  "note": {
+    "properties": {
+      "hs_timestamp": "2026-10-12T10:03:43.672Z",
+      "hs_note_body": "<b>Inbound lead: Tier A, ICP score 83/100</b><br>Owner: DACH BDR<br>Region: DACH | Language: DE | Returning contact: no<br>Org type: law_firm | Lawyers: 35<br>Practice areas: Corporate/M&A, Employment, Litigation & Arbitration, Real Estate<br>Legal-tech signals: Hiring a Legal Engineer<br>Why: Mid-size commercial firm with document-heavy practices that is starting to invest in legal tech.<br>Summary: Muster Rechtsanwälte is a commercial law firm with 35 lawyers in Munich and Frankfurt. It is hiring a Legal Engineer to digitise its workflows.<br>Score breakdown: Org type (law_firm): +20 | Lawyers (35): +15 | Practice areas: +15 | Legal-tech signals: +8 | Region (DACH): +10 | LLM fit: +15<br>Form message: Guten Tag, wir sind eine Kanzlei mit mehreren Standorten in Deutschland und prüfen KI-Lösungen für Due Diligence und Vertragsanalyse. Wir würden gerne eine Demo vereinbaren."
+    },
+    "associations": [
+      {
+        "to": {
+          "id": "48213907"
+        },
+        "types": [
+          {
+            "associationCategory": "HUBSPOT_DEFINED",
+            "associationTypeId": 202
+          }
+        ]
+      }
+    ]
+  }
+}

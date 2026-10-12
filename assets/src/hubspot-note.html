@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { width: 980px; padding: 28px; display: grid; grid-template-columns: 280px 1fr; gap: 20px; background: #f5f6f8; padding-bottom: 46px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; }
+  .name { font-size: 19px; font-weight: 700; margin-top: 12px; }
+  .email { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .prop { margin-top: 16px; }
+  .prop dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+  .prop dd { font-size: 14px; margin-top: 3px; }
+  .assoc { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .company { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .company .logo { width: 30px; height: 30px; border-radius: 6px; background: var(--track); color: var(--muted); padding: 6px; }
+  .company b { font-size: 14px; display: block; }
+  .company span { font-size: 12px; color: var(--muted); }
+  .tabs { display: flex; gap: 22px; font-size: 14px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); padding: 0 4px 10px; }
+  .tabs .on { color: var(--ink); box-shadow: 0 12px 0 -10px var(--accent); }
+  .note { margin-top: 16px; }
+  .note-head { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .note-head .icon { width: 26px; height: 26px; border-radius: 6px; background: #fff4e5; color: #c96b00; padding: 5px; }
+  .note-head b { color: var(--ink); }
+  .note-body { margin-top: 12px; font-size: 13.5px; line-height: 1.65; color: #2b2e34; }
+  .note-body b { font-weight: 700; color: var(--ink); }
+  .note-body .first { font-size: 15px; }
+  .note-body .lab { color: var(--muted); }
+</style></head>
+<body><div id="frame">
+  <div class="card">
+    <div class="avatar" id="initials"></div>
+    <div class="name" id="name"></div>
+    <div class="email" id="email"></div>
+    <dl class="prop"><dt>Company name</dt><dd id="company"></dd></dl>
+    <dl class="prop"><dt>Lead source</dt><dd>Website form → n8n</dd></dl>
+    <div class="assoc">
+      <dl class="prop" style="margin-top:0"><dt>Associated company</dt></dl>
+      <div class="company"><div class="logo icon" data-icon="crm"></div><div><b id="co-name"></b><span id="co-domain"></span></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tabs"><span class="on">Activity</span><span>Notes</span><span>Emails</span><span>Tasks</span></div>
+    <div class="note">
+      <div class="note-head"><div class="icon" data-icon="note"></div><div><b>Note</b> created by Lead Engine (n8n integration) · just now</div></div>
+      <div class="note-body" id="note"></div>
+    </div>
+  </div>
+  <div class="footer-note">Illustration of a HubSpot contact record · note text from examples/06-hubspot-payloads.json</div>
+</div>
+<script>
+for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = window.ICONS[el.dataset.icon];
+const p = window.EXAMPLES['06-hubspot-payloads'];
+const c = p.contact.properties, co = p.company.properties;
+document.getElementById('initials').textContent = (c.firstname[0] + c.lastname[0]).toUpperCase();
+document.getElementById('name').textContent = `${c.firstname} ${c.lastname}`;
+document.getElementById('email').textContent = c.email;
+document.getElementById('company').textContent = c.company;
+document.getElementById('co-name').textContent = co.name;
+document.getElementById('co-domain').textContent = `${co.domain} · ${co.country}`;
+// The note body is HTML built by the Route & Compose node; label/value pairs get styled here.
+const lines = p.note.properties.hs_note_body.split('<br>');
+document.getElementById('note').innerHTML = lines.map((l, i) => {
+  if (i === 0) return `<div class="first">${l}</div>`;
+  return '<div>' + l.replace(/(^|\| )([A-Z][A-Za-z -]+:)/g, '$1<span class="lab">$2</span>') + '</div>';
+}).join('');
+</script>
+</body></html>

@@ -2,30 +2,11 @@
 // Usage: node tests/simulate_code_nodes.js
 const assert = require('assert');
 const path = require('path');
-const wf = require(path.join(__dirname, '..', 'workflow', 'inbound-lead-engine-mvp.json'));
-
-const code = name => wf.nodes.find(n => n.name === name).parameters.jsCode;
+const { runPipeline, llm } = require('./harness');
 const payload = file => require(path.join(__dirname, '..', 'test-payloads', file));
+const website = '<html><title>Firm</title><body>' + 'Corporate M&A litigation '.repeat(20) + '</body></html>';
+const pipeline = (body, llmResponse, upsertResult) => runPipeline({ body, websiteHtml: website, llmResponse, upsertResult });
 
-function pipeline(body, llmResponse, upsertResult = { id: '101', new: true }) {
-  const out = {};
-  const run = (name, $json = {}) => {
-    const $ = node => ({ first: () => out[node][0] });
-    out[name] = new Function('$', '$json', code(name))($, $json);
-    return out[name][0].json;
-  };
-  out['Lead Form Webhook'] = [{ json: { body } }];
-  run('Config');
-  const lead = run('Normalize & Validate');
-  if (!lead.is_processable) return { lead };
-  run('Prepare LLM Request', { data: '<html><title>Firm</title><body>' + 'Corporate M&A litigation '.repeat(20) + '</body></html>' });
-  const scored = run('Score Lead', llmResponse);
-  out['HubSpot: Upsert Contact'] = [{ json: { results: [upsertResult] } }];
-  const routed = run('Route & Compose');
-  return { lead, scored, routed };
-}
-
-const llm = obj => ({ choices: [{ message: { content: JSON.stringify(obj) } }] });
 const strongFirm = llm({ org_type: 'law_firm', lawyer_count: 60, practice_areas: ['Corporate/M&A', 'Employment'], legaltech_signals: ['innovation page', 'legal engineer job'], fit_score: 17, fit_reason: 'Mid-size firm with an innovation team.', summary: 'A German full-service firm.' });
 
 let passed = 0;
@@ -44,7 +25,7 @@ test('Dutch English lead routes to EU in English', () => {
   const { lead, scored } = pipeline(payload('rest-of-eu-english.json'), strongFirm);
   assert.strictEqual(lead.region, 'EU');
   assert.strictEqual(lead.language, 'en');
-  assert.strictEqual(scored.owner.name, 'EU BDR (replace me)');
+  assert.strictEqual(scored.owner.name, 'EU BDR');
 });
 
 test('Free-mail without consent is blocked before enrichment', () => {

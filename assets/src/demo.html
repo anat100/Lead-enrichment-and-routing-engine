@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { width: 1120px; height: 630px; padding: 26px 30px; display: flex; flex-direction: column; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; }
+  .top b { font-size: 20px; font-weight: 700; }
+  .top span { font-size: 13px; color: var(--faint); }
+  .cols { flex: 1; display: grid; grid-template-columns: 300px 340px 1fr; gap: 18px; margin-top: 18px; min-height: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-height: 0; overflow: hidden; }
+  .card h3 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 14px; }
+  .field { margin-bottom: 10px; }
+  .field label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .field div { font-size: 13px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; background: #fbfbfc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .field .msg { white-space: normal; height: 74px; line-height: 1.4; font-size: 12px; }
+  .consent { font-size: 12px; display: flex; gap: 7px; align-items: center; margin-top: 4px; }
+  .box { width: 15px; height: 15px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .submit { margin-top: 14px; text-align: center; font-size: 14px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 8px; padding: 9px; }
+  .submit.sent { background: #9fbfe8; }
+  .step { display: flex; gap: 12px; padding: 9px 0; }
+  .step + .step { border-top: 1px solid #f0f0f2; }
+  .state { width: 22px; height: 22px; border-radius: 50%; flex: none; border: 2px solid #d4d6db; margin-top: 1px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; }
+  .step.active .state { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .step.done .state { background: var(--tier-a); border-color: var(--tier-a); }
+  .step b { font-size: 14px; font-weight: 600; display: block; color: var(--muted); }
+  .step.active b, .step.done b { color: var(--ink); }
+  .step span { font-size: 12px; color: var(--muted); display: block; margin-top: 2px; min-height: 15px; }
+  .step:not(.done) span { visibility: hidden; }
+  pre { font-family: var(--mono); font-size: 12px; line-height: 1.55; color: #2b2e34; white-space: pre-wrap; word-break: break-word; }
+  .k { color: #6250d6; } .s { color: #1a7f37; } .n { color: #c96b00; }
+  .out-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+  .slack { display: flex; gap: 10px; }
+  .slack .av { width: 34px; height: 34px; border-radius: 7px; background: var(--accent); color: #fff; padding: 8px; flex: none; }
+  .slack .t { font-size: 13.5px; line-height: 1.5; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: #2eb67d; margin-right: 4px; }
+  .big { font-size: 46px; font-weight: 700; letter-spacing: -0.02em; }
+  .tier { display: inline-block; font-size: 15px; font-weight: 700; color: #fff; background: var(--tier-a); border-radius: 6px; padding: 3px 10px; margin-left: 10px; vertical-align: 10px; }
+  .bd { margin-top: 12px; font-size: 13px; line-height: 1.9; }
+  .bd div { display: flex; justify-content: space-between; border-bottom: 1px dashed #e8e8ea; }
+</style></head>
+<body><div id="frame">
+  <div class="top"><b>Inbound Lead Engine · one lead, end to end</b><span>Sample data from examples/ · fictional firm</span></div>
+  <div class="cols">
+    <div class="card" id="form"></div>
+    <div class="card"><h3>n8n workflow</h3><div id="steps"></div></div>
+    <div class="card"><h3 id="out-h">Output</h3><div id="out"></div></div>
+  </div>
+</div>
+<script>
+for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = window.ICONS[el.dataset.icon];
+const E = window.EXAMPLES;
+const f = E['01-form-submission'], n = E['02-normalized-lead'], ai = E['04-llm-response'], s = E['05-scored-lead'], hs = E['06-hubspot-payloads'];
+const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const json = o => esc(JSON.stringify(o, null, 2))
+  .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+  .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+  .replace(/: (true|false|null|\d+)/g, ': <span class="n">$1</span>');
+
+const form = sent => `<h3>Website form</h3>
+  <div class="field"><label>Name</label><div>${esc(f.first_name)} ${esc(f.last_name)}</div></div>
+  <div class="field"><label>Work email</label><div>${esc(f.email)}</div></div>
+  <div class="field"><label>Firm</label><div>${esc(f.company)}</div></div>
+  <div class="field"><label>Message</label><div class="msg">${esc(f.message)}</div></div>
+  <div class="consent"><div class="box">✓</div>I agree to be contacted (GDPR consent)</div>
+  <div class="submit ${sent ? 'sent' : ''}">${sent ? 'Sent ✓' : 'Request a demo'}</div>`;
+
+const websiteText = E['03-llm-request'].messages[1].content.split('Website text: ')[1];
+const PIPE = [
+  ['Webhook received', 'POST /lead-intake → 200 OK', 'Raw form payload', `<pre>${json(f)}</pre>`],
+  ['Guardrails', `consent ✓ · business email ✓ · ${n.language.toUpperCase()} · ${n.region}`, 'Normalized lead',
+    `<pre>${json({ email: n.email, domain: n.domain, consent: n.consent, language: n.language, region: n.region, is_processable: n.is_processable, skip_reasons: n.skip_reasons })}</pre>`],
+  ['Website fetched', `${n.domain} homepage → plain text`, 'Text sent to the LLM', `<pre>${esc(websiteText.slice(0, 420))}…</pre>`],
+  ['LLM enrichment', `${ai.lawyer_count} lawyers · ${ai.practice_areas.length} practice areas`, 'LLM response (strict JSON)', `<pre>${json(ai)}</pre>`],
+  ['ICP score', `${s.total_score}/100 → Tier ${s.tier}`, 'Score Lead node',
+    `<div><span class="big">${s.total_score}</span><span style="color:var(--faint);font-size:18px"> / 100</span><span class="tier">Tier ${s.tier}</span></div>
+     <div class="bd">${s.breakdown.map(b => { const [l, v] = b.split(': +'); return `<div><span>${esc(l)}</span><b>+${v}</b></div>`; }).join('')}</div>`],
+  ['HubSpot upsert', 'company · contact · association · note', 'HubSpot API payloads',
+    `<pre>${json({ company: hs.company.properties, contact: hs.contact.properties })}</pre>`],
+  ['Slack alert', `#inbound-leads → ${s.owner.name}`, 'Message posted to #inbound-leads',
+    `<div class="slack"><div class="av icon">${window.ICONS.webhook}</div><div class="t"><b>Lead Engine</b><br>${
+      E['07-slack-message'].text.split('\n').map(l => esc(l).replace(':large_green_circle:', '<span class="dot"></span>')
+        .replace(/\*(.+?)\*/g, '<b>$1</b>').replace(/(^|\s)_(.+?)_(\s|$)/g, '$1<i>$2</i>$3')).join('<br>')}</div></div>`],
+];
+
+// STEPS drive the GIF: frame i shows steps < done as complete. hold = seconds on screen.
+window.STEPS = [{ done: -1, hold: 2.2 }, ...PIPE.map((_, i) => ({ done: i, hold: i === PIPE.length - 1 ? 5 : 2.2 }))];
+window.setStep = i => {
+  const d = window.STEPS[i].done;
+  document.getElementById('form').innerHTML = form(d >= 0);
+  document.getElementById('steps').innerHTML = PIPE.map(([t, r], j) =>
+    `<div class="step ${j <= d ? 'done' : j === d + 1 ? 'active' : ''}"><div class="state">${j <= d ? '✓' : ''}</div><div><b>${t}</b><span>${esc(r)}</span></div></div>`).join('');
+  document.getElementById('out-h').textContent = d < 0 ? 'Output' : PIPE[d][2];
+  document.getElementById('out').innerHTML = d < 0
+    ? '<div style="color:var(--faint);font-size:14px;margin-top:40px;text-align:center">Waiting for a form submission…</div>' : PIPE[d][3];
+};
+window.setStep(window.STEPS.length - 1);
+</script>
+</body></html>

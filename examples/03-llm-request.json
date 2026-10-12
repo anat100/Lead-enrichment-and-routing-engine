@@ -1,0 +1,17 @@
+{
+  "model": "gpt-4o-mini",
+  "temperature": 0,
+  "response_format": {
+    "type": "json_object"
+  },
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a B2B research assistant for a legal-AI company that sells to law firms, in-house legal departments and legal publishers in Europe.\nClassify the organisation using the website text and the inbound form. Respond with JSON only, using exactly these keys:\n{\n  \"org_type\": \"law_firm\" | \"in_house_legal\" | \"publisher\" | \"other\",\n  \"lawyer_count\": integer or null (only if stated or countable in the text),\n  \"practice_areas\": array of short English strings,\n  \"legaltech_signals\": array of short strings (e.g. \"innovation page\", \"legal engineer job\", \"mentions AI tools\"),\n  \"fit_score\": integer from 0 to 20 (fit for a legal-AI workspace product),\n  \"fit_reason\": one sentence in English,\n  \"summary\": two sentences in English describing the organisation\n}\nIf information is missing, use null or an empty array. Never invent numbers."
+    },
+    {
+      "role": "user",
+      "content": "Company name: Muster Rechtsanwälte\nDomain: muster-rechtsanwaelte.example\nCountry: DE\nForm message: Guten Tag, wir sind eine Kanzlei mit mehreren Standorten in Deutschland und prüfen KI-Lösungen für Due Diligence und Vertragsanalyse. Wir würden gerne eine Demo vereinbaren.\nWebsite title: Muster Rechtsanwälte | Wirtschaftskanzlei München\nWebsite text: Muster Rechtsanwälte | Wirtschaftskanzlei München Muster Rechtsanwälte Wirtschaftskanzlei mit 35 Berufsträgerinnen und Berufsträgern in München und Frankfurt. Rechtsgebiete Gesellschaftsrecht und M&A Arbeitsrecht Prozessführung und Schiedsverfahren Immobilienrecht Karriere Wir suchen eine:n Legal Engineer (m/w/d) zur Digitalisierung unserer Arbeitsabläufe."
+    }
+  ]
+}

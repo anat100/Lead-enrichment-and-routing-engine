@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+  #frame { width: 880px; padding: 32px 40px 44px; }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  .sub { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .group { margin-top: 26px; }
+  .group-title { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 10px; display: flex; justify-content: space-between; }
+  .row { display: grid; grid-template-columns: 250px 1fr 74px; align-items: center; gap: 16px; height: 34px; }
+  .row .name { font-size: 15px; font-weight: 500; }
+  .row .name span { color: var(--muted); font-weight: 400; }
+  .track { position: relative; height: 12px; }
+  .max { position: absolute; left: 0; top: 0; height: 12px; border-radius: 4px; background: var(--track); }
+  .fill { position: absolute; left: 0; top: 0; height: 12px; border-radius: 4px; background: var(--accent); }
+  .val { font-size: 15px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .val span { color: var(--faint); font-weight: 400; }
+  .total { margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .total-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .total-head b { font-size: 16px; font-weight: 600; }
+  .total-head .score { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .total-head .score span { font-size: 16px; color: var(--faint); font-weight: 500; }
+  .scale { position: relative; height: 18px; margin-top: 14px; border-radius: 4px; overflow: hidden; display: flex; gap: 2px; }
+  .band { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--track); }
+  .band.hit { background: var(--accent-soft); color: var(--accent); }
+  .bar { position: relative; height: 14px; margin-top: 8px; }
+  .bar .fill { height: 14px; }
+  .ticks { position: relative; height: 18px; margin-top: 6px; font-size: 12px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .ticks span { position: absolute; transform: translateX(-50%); }
+  .marker { position: absolute; top: -4px; width: 2px; height: 22px; background: var(--ink); }
+</style></head>
+<body><div id="frame">
+  <h1 id="title"></h1>
+  <div class="sub" id="sub"></div>
+  <div class="group"><div class="group-title"><span>Rules · deterministic</span><span id="rule-total"></span></div><div id="rules"></div></div>
+  <div class="group"><div class="group-title"><span>LLM judgment · capped</span><span id="llm-total"></span></div><div id="llm"></div></div>
+  <div class="total">
+    <div class="total-head"><b>Total ICP score and tier</b><div class="score" id="score"></div></div>
+    <div class="scale" id="scale"></div>
+    <div class="bar"><div class="max" style="width:100%"></div><div class="fill" id="total-fill"></div></div>
+    <div class="ticks" id="ticks"></div>
+  </div>
+  <div class="footer-note">Sample data · computed by the Score Lead node · examples/05-scored-lead.json</div>
+</div>
+<script>
+const s = window.EXAMPLES['05-scored-lead'];
+const pts = label => Number(s.breakdown.find(b => b.startsWith(label)).split('+').pop());
+const MAX_ROW = 20; // all criteria share one 0-20 point axis so bar lengths compare
+const row = (name, detail, got, max) => `
+  <div class="row"><div class="name">${name} <span>· ${detail}</span></div>
+  <div class="track"><div class="max" style="width:${max / MAX_ROW * 100}%"></div><div class="fill" style="width:${got / MAX_ROW * 100}%"></div></div>
+  <div class="val">${got} <span>/ ${max}</span></div></div>`;
+
+const org = { law_firm: 'law firm', in_house_legal: 'in-house legal', publisher: 'publisher' }[s.org_type] || s.org_type;
+document.getElementById('title').textContent = `The example lead scores ${s.total_score}/100 and lands in Tier ${s.tier}`;
+document.getElementById('sub').textContent = `${s.company} (fictional) · ${s.region} · ${s.language.toUpperCase()} · each bar is points earned out of the criterion's maximum`;
+document.getElementById('rules').innerHTML =
+  row('Org type', org, pts('Org type'), 20) +
+  row('Lawyers', s.lawyer_count ?? 'unknown', pts('Lawyers'), 20) +
+  row('Practice areas', 'document-heavy', pts('Practice areas'), 15) +
+  row('Legal-tech signals', s.legaltech_signals.length + ' found', pts('Legal-tech signals'), 15) +
+  row('Region', s.region, pts('Region'), 10);
+document.getElementById('llm').innerHTML = row('Fit judgment', 'with written reason', s.llm_score, 20);
+document.getElementById('rule-total').textContent = `${s.rule_score} / 80`;
+document.getElementById('llm-total').textContent = `${s.llm_score} / 20`;
+document.getElementById('score').innerHTML = `${s.total_score} <span>/ 100 · Tier ${s.tier}</span>`;
+
+const bands = [['C', 0, 40], ['B', 40, 70], ['A', 70, 100]];
+document.getElementById('scale').innerHTML = bands.map(([t, a, b]) =>
+  `<div class="band ${t === s.tier ? 'hit' : ''}" style="width:${b - a}%">Tier ${t}${t === 'C' ? ' · CRM only' : ' · Slack alert'}</div>`).join('');
+document.getElementById('total-fill').style.width = s.total_score + '%';
+document.getElementById('ticks').innerHTML = [0, 40, 70, 100].map(v => `<span style="left:${v}%">${v}</span>`).join('');
+</script>
+</body></html>

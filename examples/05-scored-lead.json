@@ -1,0 +1,49 @@
+{
+  "lead_id": "lead_1791799423670",
+  "received_at": "2026-10-12T10:03:43.670Z",
+  "first_name": "Test",
+  "last_name": "Lead",
+  "email": "test.lead@muster-rechtsanwaelte.example",
+  "domain": "muster-rechtsanwaelte.example",
+  "company": "Muster Rechtsanwälte",
+  "country": "DE",
+  "message": "Guten Tag, wir sind eine Kanzlei mit mehreren Standorten in Deutschland und prüfen KI-Lösungen für Due Diligence und Vertragsanalyse. Wir würden gerne eine Demo vereinbaren.",
+  "consent": true,
+  "language": "de",
+  "region": "DACH",
+  "is_processable": true,
+  "skip_reasons": [],
+  "org_type": "law_firm",
+  "lawyer_count": 35,
+  "practice_areas": [
+    "Corporate/M&A",
+    "Employment",
+    "Litigation & Arbitration",
+    "Real Estate"
+  ],
+  "legaltech_signals": [
+    "Hiring a Legal Engineer"
+  ],
+  "fit_reason": "Mid-size commercial firm with document-heavy practices that is starting to invest in legal tech.",
+  "summary": "Muster Rechtsanwälte is a commercial law firm with 35 lawyers in Munich and Frankfurt. It is hiring a Legal Engineer to digitise its workflows.",
+  "rule_score": 68,
+  "llm_score": 15,
+  "total_score": 83,
+  "tier": "A",
+  "breakdown": [
+    "Org type (law_firm): +20",
+    "Lawyers (35): +15",
+    "Practice areas: +15",
+    "Legal-tech signals: +8",
+    "Region (DACH): +10",
+    "LLM fit: +15"
+  ],
+  "llm_ok": true,
+  "website_ok": true,
+  "needs_review": false,
+  "owner": {
+    "name": "DACH BDR",
+    "slack": "",
+    "hubspot_owner_id": ""
+  }
+}
