@@ -1,0 +1,9 @@
+{
+  "first_name": "Test",
+  "last_name": "Lead",
+  "email": "test.lead@example-lawfirm.nl",
+  "company": "Example Advocaten",
+  "country": "NL",
+  "message": "Hello, we are a corporate law firm in Amsterdam and would like to see how your platform handles contract review.",
+  "consent": true
+}

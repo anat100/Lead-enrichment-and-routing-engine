@@ -1,0 +1,702 @@
+{
+  "name": "Inbound Lead Engine - MVP (HubSpot)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. Intake & guardrails\nWebhook receives the form POST and answers 200 immediately.\n\n**Config** holds every setting (owners, thresholds, model, Slack URL).\n\n**Normalize & Validate** cleans fields, checks GDPR consent, filters free-mail, detects DE/EN and region.\n\nMVP: unprocessable leads stop here. Full engine: store a minimal record and nurture.",
+        "width": 940,
+        "height": 560,
+        "color": 7
+      },
+      "id": "3e61451b-84f4-420c-bbf3-1642bbd93996",
+      "name": "Note 180632",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        160,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Enrichment & scoring\n**Fetch Website** pulls the homepage (failures continue).\n\n**LLM Extract & Judge** returns strict JSON: org type, lawyer count, practice areas, legal-tech signals, fit score + reason.\n\n**Score Lead** = rules 0-80 + LLM 0-20 → Tier A/B/C. LLM failure = rules only + manual-review flag.",
+        "width": 940,
+        "height": 560,
+        "color": 4
+      },
+      "id": "ec113b4f-ab3a-45bd-9175-504f6e630918",
+      "name": "Note c0385f",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. HubSpot (CRM)\nCompany: find by domain → update or create.\nContact: batch upsert by email (HubSpot's native dedup; returning contacts are detected).\nThen associate contact ↔ company.\n\nScore lives in a note. Flip `write_custom_properties` in Config once the custom properties exist.",
+        "width": 1420,
+        "height": 760,
+        "color": 6
+      },
+      "id": "89c86a56-3eb2-470b-b17e-b3df296f8498",
+      "name": "Note f27b30",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Route & notify\nOwner by region from Config. Note with score breakdown on the contact.\nTier A/B → Slack alert. Tier C → CRM only.\n\nFull engine: segment routing, round-robin, AI first-touch draft, Postgres funnel log.",
+        "width": 940,
+        "height": 760,
+        "color": 5
+      },
+      "id": "74f82272-f390-4ef5-8a7f-f2ad83df2b78",
+      "name": "Note bbda7e",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3520,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "bcda60be-0e1e-40d3-bad9-b6ac529664cc",
+      "name": "Lead Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        400
+      ],
+      "webhookId": "23633373-51bb-4f54-bc88-34107320b27a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// CONFIG: every tunable setting lives here.\n// In the full engine this moves to a database table (scoring_config, routing_rules).\n// ============================================================\nreturn [{\n  json: {\n    llm_model: 'gpt-4o-mini',\n    slack_webhook_url: 'https://hooks.slack.com/services/REPLACE/ME/PLEASE',\n    hubspot_portal_id: '', // your HubSpot account ID, used to build record links in Slack\n\n    // Set to true after creating the custom contact properties icp_score, icp_tier, icp_reason, lead_language\n    write_custom_properties: false,\n\n    tier_a_min: 70,\n    tier_b_min: 40,\n\n    // Routing: owner per region. hubspot_owner_id = numeric owner ID from HubSpot (Settings > Users), or '' to skip.\n    owners: {\n      DACH:  { name: 'DACH BDR (replace me)', slack: '', hubspot_owner_id: '' },\n      EU:    { name: 'EU BDR (replace me)',   slack: '', hubspot_owner_id: '' },\n      OTHER: { name: 'Inbound queue',          slack: '', hubspot_owner_id: '' }\n    },\n\n    dach_countries: ['DE', 'AT', 'CH', 'LI'],\n    eu_countries: ['BE','BG','CZ','DK','EE','IE','GR','ES','FR','HR','IT','CY','LV','LT','LU','HU','MT','NL','PL','PT','RO','SI','SK','FI','SE'],\n\n    free_mail_domains: ['gmail.com','googlemail.com','yahoo.com','yahoo.de','hotmail.com','hotmail.de','outlook.com','outlook.de','live.com','icloud.com','me.com','gmx.de','gmx.net','gmx.at','gmx.ch','web.de','t-online.de','freenet.de','aol.com','proton.me','protonmail.com','posteo.de','mail.de'],\n\n    // Practice areas with heavy document work score higher (matched as substrings, lowercase)\n    doc_heavy_practice_areas: ['corporate','m&a','merger','litigation','dispute','employment','labour','labor','real estate','compliance','banking','finance','arbeitsrecht','gesellschaftsrecht','immobilien','prozess']\n  }\n}];\n"
+      },
+      "id": "00c4aee8-9c12-4feb-87e6-42f8d635c8d7",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize the raw form payload and run the guardrails:\n// email validity, GDPR consent, free-mail filter, language and region detection.\nconst cfg = $('Config').first().json;\nconst body = $('Lead Form Webhook').first().json.body || {};\n\nconst clean = v => String(v ?? '').trim();\nconst email = clean(body.email).toLowerCase();\nconst emailValid = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\nconst domain = emailValid ? email.split('@')[1] : '';\nconst country = clean(body.country).toUpperCase().slice(0, 2);\nconst message = clean(body.message);\nconst firstName = clean(body.first_name);\nconst lastName = clean(body.last_name);\nconst company = clean(body.company) || domain;\n\n// GDPR: only an explicit opt-in counts as consent\nconst consent = [true, 'true', 'on', 'yes', 'ja', '1', 1].includes(body.consent);\nconst isFreeMail = cfg.free_mail_domains.includes(domain);\n\n// Region: country field first, then the email domain's TLD\nconst tld = domain.split('.').pop();\nlet region = 'OTHER';\nif (cfg.dach_countries.includes(country) || ['de', 'at', 'ch', 'li'].includes(tld)) region = 'DACH';\nelse if (cfg.eu_countries.includes(country)) region = 'EU';\n\n// Language: simple keyword heuristic (good enough for an MVP; swap for a library or the LLM later)\nconst text = message.toLowerCase();\nconst deHits = (text.match(/\\b(und|der|die|das|wir|ich|nicht|mit|eine|ist|sie|unsere|kanzlei|bitte|gerne|anfrage|interesse)\\b/g) || []).length\n  + (/[äöüß]/.test(text) ? 2 : 0);\nconst enHits = (text.match(/\\b(the|and|we|our|with|for|is|are|you|firm|please|would|like|interested)\\b/g) || []).length;\nconst language = deHits > enHits ? 'de' : enHits > deHits ? 'en' : (region === 'DACH' ? 'de' : 'en');\n\nconst skipReasons = [];\nif (!emailValid) skipReasons.push('invalid_email');\nif (!consent) skipReasons.push('no_consent');\nif (isFreeMail) skipReasons.push('free_mail');\n\nreturn [{\n  json: {\n    lead_id: 'lead_' + Date.now(),\n    received_at: new Date().toISOString(),\n    first_name: firstName,\n    last_name: lastName,\n    email,\n    domain,\n    company,\n    country,\n    message,\n    consent,\n    language,\n    region,\n    is_processable: skipReasons.length === 0,\n    skip_reasons: skipReasons\n  }\n}];\n"
+      },
+      "id": "fdd3a2d6-199c-4b22-9ce8-82e7ed2e6b44",
+      "name": "Normalize & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "9d9a01aa-4ebc-43c4-bbcd-e73ea9c88de7",
+              "leftValue": "={{ $json.is_processable }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1f1bacd0-be79-4e5a-800d-dab0f77cb553",
+      "name": "Processable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d30dd4d3-0b73-4541-b4d9-6afae47d09e8",
+      "name": "Stop: Not Processed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $json.domain }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; LeadEnrichmentBot/0.1)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "e9f2a24b-da42-4096-9626-003e636f3e40",
+      "name": "Fetch Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1160,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the fetched homepage into plain text and build the LLM request.\nconst lead = $('Normalize & Validate').first().json;\nconst cfg = $('Config').first().json;\n\nconst html = String($json.data || '');\nconst titleMatch = html.match(/<title[^>]*>([^<]*)<\\/title>/i);\nconst title = titleMatch ? titleMatch[1].trim() : '';\nconst text = html\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 6000);\nconst websiteOk = text.length > 200;\n\nconst system = `You are a B2B research assistant for a legal-AI company that sells to law firms, in-house legal departments and legal publishers in Europe.\nClassify the organisation using the website text and the inbound form. Respond with JSON only, using exactly these keys:\n{\n  \"org_type\": \"law_firm\" | \"in_house_legal\" | \"publisher\" | \"other\",\n  \"lawyer_count\": integer or null (only if stated or countable in the text),\n  \"practice_areas\": array of short English strings,\n  \"legaltech_signals\": array of short strings (e.g. \"innovation page\", \"legal engineer job\", \"mentions AI tools\"),\n  \"fit_score\": integer from 0 to 20 (fit for a legal-AI workspace product),\n  \"fit_reason\": one sentence in English,\n  \"summary\": two sentences in English describing the organisation\n}\nIf information is missing, use null or an empty array. Never invent numbers.`;\n\nconst user = `Company name: ${lead.company}\nDomain: ${lead.domain}\nCountry: ${lead.country || 'unknown'}\nForm message: ${lead.message || '(empty)'}\nWebsite title: ${title || '(none)'}\nWebsite text: ${websiteOk ? text : '(website could not be fetched)'}`;\n\nreturn [{\n  json: {\n    website_ok: websiteOk,\n    website_title: title,\n    llm_request: {\n      model: cfg.llm_model,\n      temperature: 0,\n      response_format: { type: 'json_object' },\n      messages: [\n        { role: 'system', content: system },\n        { role: 'user', content: user }\n      ]\n    }\n  }\n}];\n"
+      },
+      "id": "8bfae7c2-2dda-4f4b-837c-6ff193799f51",
+      "name": "Prepare LLM Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.llm_request) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "351aa5ac-0125-434b-823f-aab443d75604",
+      "name": "LLM Extract & Judge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1640,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ICP scoring = deterministic rules (0-80) + LLM fit judgment (0-20).\n// If the LLM call failed, we score on rules only and flag the lead for manual review.\nconst lead = $('Normalize & Validate').first().json;\nconst prep = $('Prepare LLM Request').first().json;\nconst cfg = $('Config').first().json;\n\nlet ai = {};\nlet llmOk = false;\ntry {\n  ai = JSON.parse($json.choices[0].message.content);\n  llmOk = true;\n} catch (e) {\n  ai = {};\n}\n\nconst breakdown = [];\nconst add = (label, pts) => { breakdown.push(`${label}: +${pts}`); return pts; };\nlet rule = 0;\n\nconst orgPts = { law_firm: 20, in_house_legal: 20, publisher: 10 }[ai.org_type] || 0;\nrule += add(`Org type (${ai.org_type || 'unknown'})`, orgPts);\n\nconst n = Number.isFinite(ai.lawyer_count) ? ai.lawyer_count : null;\nconst sizePts = n === null ? 0 : n >= 50 ? 20 : n >= 10 ? 15 : n >= 3 ? 5 : 0;\nrule += add(`Lawyers (${n ?? 'unknown'})`, sizePts);\n\nconst areas = Array.isArray(ai.practice_areas) ? ai.practice_areas : [];\nconst docHeavy = areas.some(a => cfg.doc_heavy_practice_areas.some(k => String(a).toLowerCase().includes(k)));\nrule += add('Practice areas', docHeavy ? 15 : areas.length ? 5 : 0);\n\nconst signals = Array.isArray(ai.legaltech_signals) ? ai.legaltech_signals : [];\nrule += add('Legal-tech signals', signals.length >= 2 ? 15 : signals.length === 1 ? 8 : 0);\n\nrule += add(`Region (${lead.region})`, { DACH: 10, EU: 5 }[lead.region] || 0);\n\nconst fit = llmOk ? Math.max(0, Math.min(20, Math.round(Number(ai.fit_score) || 0))) : 0;\nif (llmOk) breakdown.push(`LLM fit: +${fit}`);\n\nconst total = rule + fit;\nconst tier = total >= cfg.tier_a_min ? 'A' : total >= cfg.tier_b_min ? 'B' : 'C';\nconst needsReview = !llmOk || !prep.website_ok;\nconst owner = cfg.owners[lead.region] || cfg.owners.OTHER;\n\n// HubSpot payloads (built here so the HTTP nodes stay simple)\nconst companyProps = { name: lead.company, domain: lead.domain };\nif (lead.country) companyProps.country = lead.country;\n\nconst contactProps = { email: lead.email };\nif (lead.first_name) contactProps.firstname = lead.first_name;\nif (lead.last_name) contactProps.lastname = lead.last_name;\nif (lead.company) contactProps.company = lead.company;\nif (owner.hubspot_owner_id) contactProps.hubspot_owner_id = owner.hubspot_owner_id;\nif (cfg.write_custom_properties) {\n  contactProps.icp_score = total;\n  contactProps.icp_tier = tier;\n  contactProps.icp_reason = ai.fit_reason || '';\n  contactProps.lead_language = lead.language;\n}\n\nreturn [{\n  json: {\n    ...lead,\n    org_type: ai.org_type || 'unknown',\n    lawyer_count: n,\n    practice_areas: areas,\n    legaltech_signals: signals,\n    fit_reason: ai.fit_reason || '',\n    summary: ai.summary || '',\n    rule_score: rule,\n    llm_score: fit,\n    total_score: total,\n    tier,\n    breakdown,\n    llm_ok: llmOk,\n    website_ok: prep.website_ok,\n    needs_review: needsReview,\n    owner,\n    hubspot_company_properties: companyProps,\n    hubspot_contact_properties: contactProps\n  }\n}];\n"
+      },
+      "id": "8fb42a03-be54-4aef-9fd9-0593098a7fd3",
+      "name": "Score Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/companies/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ filterGroups: [{ filters: [{ propertyName: 'domain', operator: 'EQ', value: $json.domain }] }], properties: ['name', 'domain'], limit: 1 }) }}",
+        "options": {}
+      },
+      "id": "4105671e-aa09-4ba0-b090-662f7b5bc281",
+      "name": "HubSpot: Find Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "9441563f-c875-48af-b4e3-a02658054962",
+              "leftValue": "={{ $json.total > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "41cd7536-55d1-404e-8dae-950ea05f953f",
+      "name": "Company Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2360,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.hubapi.com/crm/v3/objects/companies/{{ $json.results[0].id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $('Score Lead').first().json.hubspot_company_properties }) }}",
+        "options": {}
+      },
+      "id": "ef12549a-c05b-426d-bfca-f30ee0f7efc5",
+      "name": "HubSpot: Update Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2600,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/companies",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: $('Score Lead').first().json.hubspot_company_properties }) }}",
+        "options": {}
+      },
+      "id": "27e6ded5-b2be-40ac-a812-d7b1055294b5",
+      "name": "HubSpot: Create Company",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2600,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Both branches (create or update) return the company object; keep only its ID.\nreturn [{ json: { company_id: $json.id } }];\n"
+      },
+      "id": "82a823e3-6a83-488f-83f4-0337a8db5a17",
+      "name": "Resolve Company ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2840,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/batch/upsert",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ inputs: [{ idProperty: 'email', id: $('Score Lead').first().json.email, properties: $('Score Lead').first().json.hubspot_contact_properties }] }) }}",
+        "options": {}
+      },
+      "id": "a0d7144e-0b3a-4e87-abc0-564488db7b8c",
+      "name": "HubSpot: Upsert Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/v4/objects/contact/{{ $json.results[0].id }}/associations/default/company/{{ $('Resolve Company ID').first().json.company_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "options": {}
+      },
+      "id": "d9bc7392-26c9-4595-b864-7c8420194d01",
+      "name": "HubSpot: Associate Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the HubSpot note and the Slack alert, and decide whether to notify.\nconst s = $('Score Lead').first().json;\nconst cfg = $('Config').first().json;\nconst contact = $('HubSpot: Upsert Contact').first().json.results[0];\nconst contactId = contact.id;\nconst isReturning = contact.new === false;\n\nconst recordUrl = cfg.hubspot_portal_id\n  ? `https://app.hubspot.com/contacts/${cfg.hubspot_portal_id}/record/0-1/${contactId}`\n  : '';\nconst list = arr => (arr && arr.length ? arr.join(', ') : 'unknown');\n\nconst noteLines = [\n  `<b>Inbound lead: Tier ${s.tier}, ICP score ${s.total_score}/100</b>`,\n  `Owner: ${s.owner.name}`,\n  `Region: ${s.region} | Language: ${s.language.toUpperCase()} | Returning contact: ${isReturning ? 'yes' : 'no'}`,\n  `Org type: ${s.org_type} | Lawyers: ${s.lawyer_count ?? 'unknown'}`,\n  `Practice areas: ${list(s.practice_areas)}`,\n  `Legal-tech signals: ${list(s.legaltech_signals)}`,\n  `Why: ${s.fit_reason || 'n/a'}`,\n  `Summary: ${s.summary || 'n/a'}`,\n  `Score breakdown: ${s.breakdown.join(' | ')}`,\n  `Form message: ${s.message || '(empty)'}`\n];\nif (s.needs_review) noteLines.push('<b>Needs manual review: enrichment incomplete.</b>');\n\nconst icon = { A: ':large_green_circle:', B: ':large_yellow_circle:', C: ':white_circle:' }[s.tier];\nconst slackLines = [\n  `${icon} *New inbound lead - Tier ${s.tier} (${s.total_score}/100)*${isReturning ? '  _returning contact_' : ''}`,\n  `*${s.company}* (${s.domain}) | ${s.region} | ${s.language.toUpperCase()}`,\n  `${[s.first_name, s.last_name].filter(Boolean).join(' ') || 'Unknown name'} - ${s.email}`,\n  s.fit_reason ? `_${s.fit_reason}_` : '',\n  `Practice areas: ${list(s.practice_areas)}`,\n  `Owner: ${s.owner.slack || s.owner.name}`,\n  recordUrl ? `<${recordUrl}|Open in HubSpot>` : '',\n  s.needs_review ? ':warning: Enrichment incomplete, please check manually.' : ''\n].filter(Boolean);\n\nreturn [{\n  json: {\n    tier: s.tier,\n    total_score: s.total_score,\n    contact_id: contactId,\n    notify: s.tier !== 'C',\n    hubspot_note_body: {\n      properties: {\n        hs_timestamp: new Date().toISOString(),\n        hs_note_body: noteLines.join('<br>')\n      },\n      associations: [{\n        to: { id: contactId },\n        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }]\n      }]\n    },\n    slack_body: { text: slackLines.join('\\n') }\n  }\n}];\n"
+      },
+      "id": "46b2f362-1e93-4833-842b-f465ecce75d8",
+      "name": "Route & Compose",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3560,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/notes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotAppToken",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.hubspot_note_body) }}",
+        "options": {}
+      },
+      "id": "fd51abe2-7aaf-4ceb-bb34-ed0df69fc0d7",
+      "name": "HubSpot: Add Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "d0fdae2b-6d23-4619-b661-651c7986fa19",
+              "leftValue": "={{ $('Route & Compose').first().json.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4b47c2fe-dc5a-4374-8b36-3541cc125847",
+      "name": "Tier A or B?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.slack_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Route & Compose').first().json.slack_body) }}",
+        "options": {}
+      },
+      "id": "744e056b-606d-4481-ba5e-0c002db04248",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4280,
+        400
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e1193e5a-12ea-4e1a-a0ef-213237908da5",
+      "name": "Tier C: CRM Only",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        4280,
+        620
+      ]
+    }
+  ],
+  "connections": {
+    "Lead Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Validate": {
+      "main": [
+        [
+          {
+            "node": "Processable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processable?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Website",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Not Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Website": {
+      "main": [
+        [
+          {
+            "node": "Prepare LLM Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare LLM Request": {
+      "main": [
+        [
+          {
+            "node": "LLM Extract & Judge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Extract & Judge": {
+      "main": [
+        [
+          {
+            "node": "Score Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Lead": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Find Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Find Company": {
+      "main": [
+        [
+          {
+            "node": "Company Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Exists?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Update Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot: Create Company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Update Company": {
+      "main": [
+        [
+          {
+            "node": "Resolve Company ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Create Company": {
+      "main": [
+        [
+          {
+            "node": "Resolve Company ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Company ID": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Associate Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Associate Contact": {
+      "main": [
+        [
+          {
+            "node": "Route & Compose",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route & Compose": {
+      "main": [
+        [
+          {
+            "node": "HubSpot: Add Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot: Add Note": {
+      "main": [
+        [
+          {
+            "node": "Tier A or B?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tier A or B?": {
+      "main": [
+        [
+          {
+            "node": "Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tier C: CRM Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
